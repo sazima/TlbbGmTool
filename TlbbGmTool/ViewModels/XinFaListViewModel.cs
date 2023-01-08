@@ -1,98 +1,119 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Threading.Tasks;
-using liuguang.TlbbGmTool.Common;
-using liuguang.TlbbGmTool.Views.XinFa;
 using MySql.Data.MySqlClient;
+using TlbbGmTool.Core;
+using TlbbGmTool.Models;
+using TlbbGmTool.View.Windows;
 
-namespace liuguang.TlbbGmTool.ViewModels;
-
-public class XinFaListViewModel : ViewModelBase
+namespace TlbbGmTool.ViewModels
 {
-    #region Fields
-    public int CharGuid;
-    /// <summary>
-    /// 数据库连接
-    /// </summary>
-    public DbConnection? Connection;
-
-    #endregion
-
-    #region Properties
-
-    public ObservableCollection<XinFaLogViewModel> XinFaList { get; } = new();
-
-    public Command EditXinFaCommand { get; }
-
-    #endregion
-
-    public XinFaListViewModel()
+    public class XinFaListViewModel : BindDataBase
     {
-        EditXinFaCommand = new(ShowXinFaEditor);
-    }
+        #region Fields
 
-    public async Task LoadXinFaListAsync()
-    {
-        if (Connection is null)
+        private MainWindowViewModel _mainWindowViewModel;
+        private int _charguid;
+        private EditRoleWindow _editRoleWindow;
+        private bool _xinFaListLoaded;
+
+        #endregion
+
+        #region Properties
+
+        public ObservableCollection<XinFa> XinFaList { get; } =
+            new ObservableCollection<XinFa>();
+
+        public AppCommand EditXinFaCommand { get; }
+
+        #endregion
+
+        public XinFaListViewModel()
         {
-            return;
+            EditXinFaCommand = new AppCommand(ShowEditXinFaDialog);
         }
-        try
+
+        public void InitData(MainWindowViewModel mainWindowViewModel, int charguid, EditRoleWindow editRoleWindow)
         {
-            var xinFaList = await Task.Run(async () =>
+            _mainWindowViewModel = mainWindowViewModel;
+            _editRoleWindow = editRoleWindow;
+            _charguid = charguid;
+            if (_xinFaListLoaded)
             {
-                return await DoLoadXinFaListAsync(Connection, CharGuid);
-            });
-            XinFaList.Clear();
-            foreach (var xinFaInfo in xinFaList)
-            {
-                XinFaList.Add(xinFaInfo);
+                return;
             }
-        }
-        catch (Exception ex)
-        {
-            ShowErrorMessage("加载出错", ex);
-        }
-    }
 
-    private async Task<List<XinFaLogViewModel>> DoLoadXinFaListAsync(DbConnection connection, int charGuid)
-    {
-        var xinFaList = new List<XinFaLogViewModel>();
-        const string sql = "SELECT * FROM t_xinfa WHERE charguid=@charguid ORDER BY aid ASC";
-        var mySqlCommand = new MySqlCommand(sql, connection.Conn);
-        mySqlCommand.Parameters.Add(new MySqlParameter("@charguid", MySqlDbType.Int32)
+            LoadXinFaList();
+            _xinFaListLoaded = true;
+        }
+
+        private async void LoadXinFaList()
         {
-            Value = charGuid
-        });
-        // 切换数据库
-        await connection.SwitchGameDbAsync();
-        using var reader = await mySqlCommand.ExecuteReaderAsync();
-        if (reader is MySqlDataReader rd)
-        {
-            while (await rd.ReadAsync())
+            if (_mainWindowViewModel.ConnectionStatus != DatabaseConnectionStatus.Connected)
             {
-                xinFaList.Add(new(new()
+                _mainWindowViewModel.ShowErrorMessage("出错了", "数据库未连接");
+                return;
+            }
+
+            try
+            {
+                var xinFaList = await DoLoadXinFaList();
+                foreach (var xinFaInfo in xinFaList)
                 {
-                    Id = rd.GetInt32("aid"),
-                    CharGuid = rd.GetInt32("charguid"),
-                    XinFaId = rd.GetInt32("xinfaid"),
-                    XinFaLevel = rd.GetInt32("xinfalvl")
-                }));
+                    XinFaList.Add(xinFaInfo);
+                }
+
+                EditXinFaCommand.RaiseCanExecuteChanged();
+            }
+            catch (Exception e)
+            {
+                _mainWindowViewModel.ShowErrorMessage("加载出错", e.Message);
             }
         }
-        return xinFaList;
-    }
 
-    private void ShowXinFaEditor(object? parameter)
-    {
-        if (parameter is XinFaLogViewModel xinFaLog)
+        private async Task<List<XinFa>> DoLoadXinFaList()
         {
-            ShowDialog(new XinFaEditorWindow(), (XinFaEditorViewModel vm) =>
+            var xinFaList = new List<XinFa>();
+            var mySqlConnection = _mainWindowViewModel.MySqlConnection;
+            var sql = "SELECT * FROM t_xinfa WHERE charguid=" + _charguid
+                                                              + " ORDER BY aid ASC";
+            var mySqlCommand = new MySqlCommand(sql, mySqlConnection);
+            await Task.Run(async () =>
             {
-                vm.XinFaLog = xinFaLog;
-                vm.Connection = Connection;
+                var gameDbName = _mainWindowViewModel.SelectedServer.GameDbName;
+                if (mySqlConnection.Database != gameDbName)
+                {
+                    // 切换数据库
+                    await mySqlConnection.ChangeDataBaseAsync(gameDbName);
+                }
+
+                using (var rd = await mySqlCommand.ExecuteReaderAsync() as MySqlDataReader)
+                {
+                    while (await rd.ReadAsync())
+                    {
+                        var xinFaInfo = new XinFa()
+                        {
+                            Aid = rd.GetInt32("aid"),
+                            Charguid = rd.GetInt32("charguid"),
+                            Xinfaid = rd.GetInt32("xinfaid"),
+                            Xinfalvl = rd.GetInt32("xinfalvl")
+                        };
+                        xinFaList.Add(xinFaInfo);
+                    }
+                }
             });
+            return xinFaList;
+        }
+
+        private void ShowEditXinFaDialog(object parameter)
+        {
+            var xinFaInfo = parameter as XinFa;
+            var editXinFaWindow = new EditXinFaWindow(_mainWindowViewModel, xinFaInfo)
+            {
+                Owner = _editRoleWindow
+            };
+            editXinFaWindow.ShowDialog();
         }
     }
 }

@@ -1,93 +1,96 @@
-using System;
+﻿using System;
 using System.Collections.ObjectModel;
-using System.Linq;
-using liuguang.TlbbGmTool.Common;
-using liuguang.TlbbGmTool.Models;
-using liuguang.TlbbGmTool.Services;
-using liuguang.TlbbGmTool.Views.Server;
+using System.Windows;
+using TlbbGmTool.Core;
+using TlbbGmTool.Models;
+using TlbbGmTool.Services;
+using TlbbGmTool.View.Windows;
 
-namespace liuguang.TlbbGmTool.ViewModels;
-public class ServerListViewModel : ViewModelBase
+namespace TlbbGmTool.ViewModels
 {
-    #region Fields
-    private ObservableCollection<GameServerViewModel> _serverList = new();
-    #endregion
-
-    #region Properties
-
-    public ObservableCollection<GameServerViewModel> ServerList
+    public class ServerListViewModel : BindDataBase
     {
-        get => _serverList;
-        set => SetProperty(ref _serverList, value);
-    }
+        #region Fields
 
-    public Command AddServerCommand { get; }
+        private MainWindowViewModel _mainWindowViewModel;
+        private ServerListWindow _serverListWindow;
 
-    public Command EditServerCommand { get; }
+        #endregion
 
-    public Command DeleteServerCommand { get; }
-    #endregion
+        #region Properties
 
-    public ServerListViewModel()
-    {
-        AddServerCommand = new(ShowAddDialog);
-        EditServerCommand = new(ShowEditDialog, CanEdit);
-        DeleteServerCommand = new(ProcessDelete, CanEdit);
-    }
+        public ObservableCollection<GameServer> ServerList { get; private set; }
+            = new ObservableCollection<GameServer>();
 
-    private bool CanEdit(object? parameter)
-    {
-        if (parameter is GameServerViewModel serverInfo)
+        public AppCommand AddServerCommand { get; }
+        public AppCommand EditServerCommand { get; }
+
+        public AppCommand DeleteServerCommand { get; }
+
+        #endregion
+
+        public ServerListViewModel()
         {
-            return serverInfo.DbStatus == DbStatus.NotConnect;
+            AddServerCommand = new AppCommand(ShowAddServerDialog);
+            EditServerCommand = new AppCommand(ShowEditServerDialog, CanShowEditServerDialog);
+            DeleteServerCommand = new AppCommand(ProcessDeleteServer, CanShowEditServerDialog);
         }
-        return false;
-    }
 
-    private void ShowEditDialog(object? parameter)
-    {
-        if (parameter is GameServerViewModel serverInfo)
+        public void InitData(MainWindowViewModel mainWindowViewModel, ServerListWindow serverListWindow)
         {
-            ShowDialog(new ServerEditorWindow(), (ServerEditorViewModel vm) =>
+            _mainWindowViewModel = mainWindowViewModel;
+            _serverListWindow = serverListWindow;
+            ServerList = mainWindowViewModel.ServerList;
+            RaisePropertyChanged(nameof(ServerList));
+        }
+
+        private bool CanShowEditServerDialog(object parameter)
+        {
+            var serverInfo = parameter as GameServer;
+            return !serverInfo.Connected;
+        }
+
+        private void ShowEditServerDialog(object parameter)
+        {
+            var serverInfo = parameter as GameServer;
+            var editServerWindow = new AddOrEditServerWindow(serverInfo, _mainWindowViewModel)
             {
-                vm.ServerInfo = serverInfo;
-                vm.ServerList = _serverList;
-            });
-        }
-    }
-
-    private void ShowAddDialog()
-    {
-        ShowDialog(new ServerEditorWindow(), (ServerEditorViewModel vm) =>
-        {
-            vm.ServerList = _serverList;
-        });
-    }
-
-    private async void ProcessDelete(object? parameter)
-    {
-        if (parameter is not GameServerViewModel serverInfo)
-        {
-            return;
-        }
-        //删除确认
-        if (!Confirm("删除提示", $"你确定要删除服务器{serverInfo.ServerName}吗?"))
-        {
-            return;
+                Owner = _serverListWindow
+            };
+            editServerWindow.ShowDialog();
         }
 
-        ServerList.Remove(serverInfo);
-        var serverList = from item in ServerList select item.AsServer();
-        try
+        private void ShowAddServerDialog()
         {
-            await ServerService.SaveGameServersAsync(serverList);
-        }
-        catch (Exception e)
-        {
-            ShowErrorMessage("保存配置文件失败", e);
-            return;
+            var editServerWindow = new AddOrEditServerWindow(null, _mainWindowViewModel)
+            {
+                Owner = _serverListWindow
+            };
+            editServerWindow.ShowDialog();
         }
 
-        ShowMessage("操作成功", "删除服务器成功");
+        private async void ProcessDeleteServer(object parameter)
+        {
+            var serverInfo = parameter as GameServer;
+            //删除确认
+            if (MessageBox.Show(_serverListWindow, $"你确定要删除服务器{serverInfo.ServerName}吗?",
+                "删除提示", MessageBoxButton.YesNoCancel, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            ServerList.Remove(serverInfo);
+            try
+            {
+                await ServerService.SaveGameServers(ServerList);
+            }
+            catch (Exception e)
+            {
+                _mainWindowViewModel.ShowErrorMessage("保存配置文件失败", e.Message);
+                return;
+            }
+
+            _mainWindowViewModel.ShowErrorMessage("操作成功", "删除服务器成功");
+        }
     }
 }

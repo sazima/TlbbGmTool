@@ -1,30 +1,37 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Configuration;
+using System.Data;
+using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Threading;
 
-namespace liuguang.TlbbGmTool;
-
-/// <summary>
-/// Interaction logic for App.xaml
-/// </summary>
-public partial class App : Application
+namespace TlbbGmTool
 {
-    private void Application_DispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    /// <summary>
+    /// App.xaml 的交互逻辑
+    /// </summary>
+    public partial class App : Application
     {
-        var messageContent = string.Empty;
-        var ex = e.Exception;
-        while (ex != null)
+        private void App_OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
         {
-            if (!string.IsNullOrEmpty(messageContent))
+            var messageContent = string.Empty;
+            var ex = e.Exception;
+            while (ex != null)
             {
-                messageContent += "\n\n";
+                if (!string.IsNullOrEmpty(messageContent))
+                {
+                    messageContent += "\n\n";
+                }
+
+                messageContent += $"{ex.Message}\n{ex.StackTrace}";
+                ex = ex.InnerException;
             }
 
-            messageContent += $"{ex.Message}\n{ex.StackTrace}";
-            ex = ex.InnerException;
+            MessageBox.Show(messageContent,
+                "程序出现未捕获的异常", MessageBoxButton.OK, MessageBoxImage.Error);
+            Application.Current.Shutdown();
         }
-
-        MessageBox.Show(messageContent,
-            "程序出现未捕获的异常", MessageBoxButton.OK, MessageBoxImage.Error);
-        Current.Shutdown();
     }
 }

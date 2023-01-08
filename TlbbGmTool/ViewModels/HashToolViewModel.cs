@@ -1,60 +1,56 @@
-using liuguang.TlbbGmTool.Common;
-using System.Security.Cryptography;
+﻿using System.Security.Cryptography;
 using System.Text;
+using TlbbGmTool.Core;
 
-namespace liuguang.TlbbGmTool.ViewModels;
-
-public class HashToolViewModel : NotifyBase
+namespace TlbbGmTool.ViewModels
 {
-    #region Fields
-
-    private string _plainText = string.Empty;
-    private string _hashText = string.Empty;
-
-    #endregion
-
-    #region Properties
-
-    public string PlainText
+    public class HashToolViewModel : BindDataBase
     {
-        get => _plainText;
-        set
+        #region Fields
+
+        private string _plainText = string.Empty;
+
+        #endregion
+
+        #region Properties
+
+        public string PlainText
         {
-            if (SetProperty(ref _plainText, value))
+            get => _plainText;
+            set
             {
-                HashText = GetHashText(value);
+                if (SetProperty(ref _plainText, value))
+                {
+                    RaisePropertyChanged(nameof(HashText));
+                }
             }
         }
-    }
 
-    public string HashText
-    {
-        get => _hashText;
-        private set =>SetProperty(ref _hashText, value);
-    }
+        public string HashText => GetHashText(_plainText);
 
-    #endregion
+        #endregion
 
-    private string GetHashText(string plainText)
-    {
-        if (string.IsNullOrEmpty(plainText))
+        private string GetHashText(string plainText)
         {
-            return plainText;
-        }
+            if (string.IsNullOrEmpty(plainText))
+            {
+                return plainText;
+            }
 
-        var data = Encoding.UTF8.GetBytes(_plainText);
-        byte[] hashData;
-        using (var md5 = MD5.Create())
-        {
-            hashData = md5.ComputeHash(data);
-        }
+            var data = Encoding.UTF8.GetBytes(_plainText);
+            byte[] hashData;
+            using (var md5 = MD5.Create())
+            {
+                hashData = md5.ComputeHash(data);
+            }
 
-        var sBuilder = new StringBuilder();
-        foreach (var t in hashData)
-        {
-            sBuilder.Append(t.ToString("x2"));
-        }
+            var sBuilder = new StringBuilder();
+            foreach (var t in hashData)
+            {
+                sBuilder.Append(t.ToString("x2"));
+            }
 
-        return sBuilder.ToString();
+            return sBuilder.ToString();
+        }
     }
 }
